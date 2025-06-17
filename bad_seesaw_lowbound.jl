@@ -3,7 +3,7 @@ using LinearAlgebra, Ket, JuMP, SCS
 #=
 
 Ceci est une version non optimisée de seesaw_lowbound.jl. Dans la version initiale, je voulais utiliser des paramètres. Le problème est que si SCS (avec ParametricOptInterface) supporte les expressions de type Paramètre * Variable 
-(ie ne les considère pas comme quadratique), il ne supporte pas Paramètre * Paramètre * Variable (il considère que c'est une expression non linéaire). Je n'ai donc pas réussi à utiliser les paramètres. Dans cette version, je crée donc 
+(ie ne les considère pas comme quadratiques), il ne supporte pas Paramètre * Paramètre * Variable (il considère que c'est une expression non linéaire). Je n'ai donc pas réussi à utiliser les paramètres. Dans cette version, je crée donc 
 un nouveau modèle pour chaque problème que je veux résoudre. 
 
 
@@ -77,21 +77,11 @@ function SW(param,G)
     return (1/n) * sum(u(i,a,t,G) * Pinit(t) * P(a,t,param,G) for (a,t) in W for i in 1:n)
 end
 
-function Gain_for_i(i,ti,param,G)
-    n,_,W,_,_,Pinit = G 
+function Gain_for_i(i,param,G)
+    _,_,W,_,_,Pinit = G 
 
-
-    function terme(a,t) 
-        if t[i]==ti 
-            return u(i,a,t,G) * Pinit(t) * P(a,t,param,G)
-        else
-            return 0
-        end
-    end
-
-    return sum(terme(a,t) for (a,t) in W)
+    return sum(u(i,a,t,G) * Pinit(t) * P(a,t,param,G) for (a,t) in W)
 end
-
 
 
 
@@ -143,30 +133,21 @@ function one_iteration_Gain_for_i(InitialValues,G,k) # Applique une itération d
 
     # SDP sur les mesures de chaque joueur, dans l'ordre croissant 
     for i in 1:n 
-        # Cette fois-ci on a deux SDPs à faire pour chaque joueur i : un avec ti=0 et un avec ti=1 
-
-        for ti in 0:1 
-            model=Model(SCS.Optimizer)
-            set_silent(model)
-            @variable(model,N0[1:k,1:k],PSD)
-            @variable(model,N1[1:k,1:k],PSD)
-            @constraint(model,N0+N1==LinearAlgebra.I)
-            if ti==0 
-                N = [[N0, N1] InitialValues[i][:,2]]
-            else 
-                N = [InitialValues[i][:,1] [N0, N1]]
-            end
-            param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
-            @objective(model,Max,Gain_for_i(i,ti,param,G))
-            JuMP.optimize!(model)
-            if ti==0
-                InitialValues[i] = [[JuMP.value(N0), JuMP.value(N1)] InitialValues[i][:,2]]
-            else 
-                InitialValues[i] = [InitialValues[i][:,1] [JuMP.value(N0), JuMP.value(N1)]]
-            end
-        end    
+        model=Model(SCS.Optimizer)
+        set_silent(model)
+        @variable(model,N00[1:k,1:k],PSD)
+        @variable(model,N10[1:k,1:k],PSD)
+        @variable(model,N01[1:k,1:k],PSD)
+        @variable(model,N11[1:k,1:k],PSD)
+        @constraint(model,N00+N10==LinearAlgebra.I)
+        @constraint(model,N01+N11==LinearAlgebra.I)
+        N = [[N00,N10] [N01,N11]]
+        param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
+        @objective(model,Max,Gain_for_i(i,param,G))
+        JuMP.optimize!(model)
+        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]   
     end
-end # changer mettre somme sur les ti parce que pas obligé de faire deux SDP séparés
+end 
 
 function iterations_SW(InitialValues,G,k,eps) # fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence eps
     prevInitialValues = copy(InitialValues)
@@ -232,4 +213,17 @@ function random_InitialValues(G,k)
     end
     rho = random_state(Float64,k^n)
     push!(InitialValues,rho) 
+end
+
+function many_randoms(G,k,eps,nb_tests)
+    for i in 1:nb_tests 
+        InitialValues = random_InitialValues(G,k)
+        iterations_SW(InitialValues,G,k,eps)
+        iterations_Gain_for_i(InitialValues,G,k,eps)
+        sw = SW(InitialValues,G)
+        if sw>0.9
+            print(SW(InitialValues,G))
+            print("\n")
+        end
+    end
 end
