@@ -84,6 +84,10 @@ function SW(param,G)
 end
 
 function Gain_for_i(i,param,G)
+    if param == [] # code pour dire que les données ne doivent pas être prises en compte (si on a pas réussi à converger)
+        return 0
+    end
+
     _,_,W,_,_,Pinit = G 
 
     return sum(u(i,a,t,G) * Pinit(t) * P(a,t,param,G) for (a,t) in W)
@@ -155,24 +159,38 @@ function one_iteration_Gain_for_i(InitialValues,G,k) # Applique une itération d
     end
 end 
 
-function iterations_SW(InitialValues,G,k,eps) # fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence eps
+function iterations_SW(InitialValues,G,k,eps,seuil) # fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence eps
     prevInitialValues = copy(InitialValues)
+    nb_iter = 1
 
-    while true 
+    while nb_iter <= seuil
         one_iteration_SW(InitialValues,G,k)
         sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         prevInitialValues = copy(InitialValues)
+        nb_iter+=1
+    end
+
+    if nb_iter > seuil  # pas de convergence 
+        print("Pas de convergence (iterations_SW). Erreur pour la dernière itération : ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        InitialValues=[]
     end
 end
 
-function iterations_Gain_for_i(InitialValues,G,k,eps) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
+function iterations_Gain_for_i(InitialValues,G,k,eps,seuil) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
     prevInitialValues = copy(InitialValues)
+    nb_iter = 1
 
-    while true 
+    while nb_iter <= seuil
         one_iteration_Gain_for_i(InitialValues,G,k)
         # print("anotherone : delta = ",sum(norm.(prevInitialValues-InitialValues)),"\n")
         sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         prevInitialValues = copy(InitialValues)
+        nb_iter+=1
+    end
+
+    if nb_iter > seuil  # pas de convergence 
+        print("Pas de convergence (iterations_Gain_for_i). Erreur pour la dernière itération : ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        InitialValues=[]
     end
 end
 
@@ -237,13 +255,13 @@ function random_InitialValues(G,k)
     push!(InitialValues,rho) 
 end
 
-function many_tests(G,k,povms,eps,nb_tests,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
+function many_tests(G,k,povms,eps,seuil,nb_tests,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
     # POVMs aléatoires
     print("POVMs aléatoires :\n")
     for i in 1:nb_tests 
         InitialValues = random_InitialValues(G,k)
-        iterations_SW(InitialValues,G,k,eps)
-        iterations_Gain_for_i(InitialValues,G,k,eps)
+        iterations_SW(InitialValues,G,k,eps,seuil)
+        iterations_Gain_for_i(InitialValues,G,k,eps,seuil)
         sw = SW(InitialValues,G)
         if sw>barre
             print(SW(InitialValues,G))
@@ -254,8 +272,8 @@ function many_tests(G,k,povms,eps,nb_tests,barre) # Fait plusieurs tests en part
     # POVMs donnés 
     print("POVMs contrôlés :\n")
     for InitialValues in given_InitialValues(G,k,povms)
-        iterations_SW(InitialValues,G,k,eps)
-        iterations_Gain_for_i(InitialValues,G,k,eps)
+        iterations_SW(InitialValues,G,k,eps,seuil)
+        iterations_Gain_for_i(InitialValues,G,k,eps,seuil)
         sw = SW(InitialValues,G)
         if sw>barre
             print(SW(InitialValues,G))
