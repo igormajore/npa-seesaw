@@ -37,6 +37,12 @@ function krons(lst) # calcule le produit tensoriel de toutes les matrices de lst
     return prod 
 end
 
+povm_canonique = [ [[1,0] [0,0]] , [[0,0] [0,1]] ]
+povm_canonique_renverse = [ [[0,0] [0,1]] , [[1,0] [0,0]] ]
+povm_hadamard = [ (1/2)*[[1,1] [1,1]] , (1/2)*[[1,-1] [-1,1]] ]
+povm_hadamard_renverse = [ (1/2)*[[1,-1] [-1,1]] , (1/2)*[[1,1] [1,1]] ]
+povms1 = [povm_canonique,povm_hadamard]
+povms2 = [povm_canonique,povm_canonique_renverse,povm_hadamard,povm_hadamard_renverse]
 
 
 
@@ -154,7 +160,7 @@ function iterations_SW(InitialValues,G,k,eps) # fait des itérations jusqu'à ob
 
     while true 
         one_iteration_SW(InitialValues,G,k)
-        sum(norm.(prevInitialValues-InitialValues)) < eps || break 
+        sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         prevInitialValues = copy(InitialValues)
     end
 end
@@ -164,7 +170,8 @@ function iterations_Gain_for_i(InitialValues,G,k,eps) # fait des itérations jus
 
     while true 
         one_iteration_Gain_for_i(InitialValues,G,k)
-        sum(norm.(prevInitialValues-InitialValues)) < eps || break 
+        # print("anotherone : delta = ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         prevInitialValues = copy(InitialValues)
     end
 end
@@ -183,22 +190,37 @@ end
 
 
 
-# Valeurs initiales
+# Valeurs initiales et tests
 
-function bad_InitialValues(G,k)
+function given_InitialValues(G,k,povms) # povms est une liste de POVMs. Cette fonction renvoie toutes les InitialValues qu'on peut construire en partant des mesures dans la liste povms (et en prenant des états partagés aléatoires)
     n,_,_,_,_,_ = G
-
-    InitialValues=[]
-    for i in 1:n 
-        M00 = Matrix(I,k,k)
-        M10 = zeros(k,k)
-        M01 = Matrix(I,k,k)
-        M11 = zeros(k,k)
-        push!(InitialValues,[[M00, M10] [M01, M11]])
-    end
-    push!(InitialValues,(1/n)*Matrix(I,k^n,k^n))
     
-    return InitialValues
+    un_joueur = [[m1 m2] for m1 in povms for m2 in povms] # toutes les combinaisons de mesures possibles pour un joueur : une mesure pour chaque type 
+
+    function combinaisons(p) # renvoie la liste de toutes les InitialValues à tester (sans l'état partagé, qui sera choisi aléatoirement ensuite) s'il y a p joueurs (pour récursion)
+        if p==0 
+            return [[]]
+        else
+            res = []
+            for InitialValues in combinaisons(p-1)
+                for m in un_joueur 
+                    newInitialValues = copy(InitialValues)
+                    push!(newInitialValues,m)
+                    push!(res,newInitialValues)
+                end
+            end
+            return res 
+        end
+    end
+    
+    AllInitialValues = combinaisons(n)
+
+    # Ajout des états partagés aléatoires 
+    for InitialValues in AllInitialValues 
+        push!(InitialValues,random_state(Float64,k^n))
+    end 
+
+    return AllInitialValues
 end
 
 function random_InitialValues(G,k)
@@ -215,13 +237,27 @@ function random_InitialValues(G,k)
     push!(InitialValues,rho) 
 end
 
-function many_randoms(G,k,eps,nb_tests)
+function many_tests(G,k,povms,eps,nb_tests,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
+    # POVMs aléatoires
+    print("POVMs aléatoires :\n")
     for i in 1:nb_tests 
         InitialValues = random_InitialValues(G,k)
         iterations_SW(InitialValues,G,k,eps)
         iterations_Gain_for_i(InitialValues,G,k,eps)
         sw = SW(InitialValues,G)
-        if sw>0.9
+        if sw>barre
+            print(SW(InitialValues,G))
+            print("\n")
+        end
+    end
+
+    # POVMs donnés 
+    print("POVMs contrôlés :\n")
+    for InitialValues in given_InitialValues(G,k,povms)
+        iterations_SW(InitialValues,G,k,eps)
+        iterations_Gain_for_i(InitialValues,G,k,eps)
+        sw = SW(InitialValues,G)
+        if sw>barre
             print(SW(InitialValues,G))
             print("\n")
         end
