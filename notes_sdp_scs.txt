@@ -1,0 +1,53 @@
+syntaxe de la résolution d'un sdp avec scs
+https://jump.dev/JuMP.jl/stable/manual/models/
+
+SCS accepte toute fonction linéaire d'une variable PSD comme objectif ! en particulier le produit tensoriel marche !!!
+
+using JuMP, SCS, LinearAlgebra
+model = Model(SCS.Optimizer)
+@variable(model, _[1:n,1:n], PSD) #par ex X[1:2,1:2] pour une matrice 2-2
+@variable(model,_ in Parameter(0)) #initialisation d'un paramètre
+@objective(model, Max, _ ) #objectif 
+@constraint(model, _) #contraintes
+JuMP.optimize!(model) #donne la valeur optimisée
+X_sol = JuMP.value(X) #si X est la variable, donne une valeur d'argument en lequel c'est atteint
+
+
+
+valeur de départ : 
+- soit utiliser le mot-clé "start" dans la macro @variable
+@variable(model,x,start=1)
+@variable(model, x[i=1:2],start=i^2) # de manière générale on peut définir plusieurs inconnues à la fois en itérant, utiliser ça pour code plus lisible
+- soit utiliser set_start_value 
+@variable(model,x)
+set_start_value(x,2)
+
+voir JuMP -> Manual -> Variables -> Start values 
+pour plus de détails
+https://jump.dev/JuMP.jl/stable/manual/models/
+
+
+
+on peut ajouter des paramètres lorsqu'on utilise le même modèle plusieurs fois avec des modèles différents (UTILE pour fixer les autres variables)
+peut poser des problèmes du genre paramètre * variable considéré comme quadratique par certains solveurs, mais visiblement pas par SCS
+mais on peut s'en sortir avec une librairie supplémentaire
+utiliser des paramètres est plus efficace car JuMP n'a pas besoin de reconstruire le modèle en entier
+syntaxe : 
+@variable(model,p[i in 1:2 in Parameter(2i)]) #initialise un vecteur paramètre p = [2,4] 
+parameter_value.(p)
+set_parameter_value.(p,q)
+
+voir vectorized contraints. normalement je veux des containtes vectorisées donc rien de spé (A*x==b).
+confirmation : je veux du == pas du .== 
+
+
+
+petite question sur symétrique ou hermitienne
+- si on veut que la variable soit symétrique définie positive, on met
+@variable(model,x,PSD)
+- si on veut qu'elle soit hermitienne définie positive, on met 
+@variable(model,x in HermitianPSDCone())
+normalement la matrice est censée être hermitienne mais on peut peut-être se restreindre aux matrices symétriques, vu que souvent on peut se restreindre aux projecteurs orthogonaux et peut-être que demander x PSD donne de meilleures performances
+donc il faut demander à mehdi si la variable est hermitienne ou symétrique
+SCS semble ne pas supporter les variables hermitiennes donc pas de question à se poser a priori
+

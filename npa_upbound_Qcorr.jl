@@ -1,4 +1,4 @@
-using QuantumNPA, Plots
+using QuantumNPA
 import Base: +  # pour ajouter des méthodes à l'addition
 
 #= 
@@ -32,12 +32,7 @@ function +(X::Polynomial,n::Number) # définit X+0 où X est un polynôme NPA et
     return X
 end
 
-function change_game(G,rat)
-    n,T,W,_,_,Pinit = G
-    v0 = 2rat
-    v1=2-v0
-    return (n,T,W,v0,v1,Pinit)
-end
+
 
 
 
@@ -153,11 +148,7 @@ function NPAopt(G,lv)
     return npa_max(SWnpa(G,P),lv,ge=NashConstraints(G,P)) # On optimise le social welfare sous la contrainte "équilibre de Nash"
 end
 
-function plot_NPAopt(G,lv,nb_steps)
-    ratios = range(0, 1, length=nb_steps)
-    upbounds = [NPAopt(change_game(G,rat),lv) for rat in ratios]
-    plot(ratios,upbounds,title="Majorant du meilleur social welfare pour les corrélations quantiques",xlabel="v0/(v0+v1)")
-end
+
 
 
 

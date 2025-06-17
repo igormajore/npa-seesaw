@@ -73,3 +73,20 @@ function NC_00_cycle(n,rat) # Initialisation NC_00(C_n). rat=v0/(v0+v1), et on m
 
     return (n,T,W,v0,v1,Pinit)
 end
+
+
+
+
+
+
+
+
+
+# Modification des gains
+
+function change_game(G,rat)
+    n,T,W,_,_,Pinit = G
+    v0 = 2rat
+    v1=2-v0
+    return (n,T,W,v0,v1,Pinit)
+end
