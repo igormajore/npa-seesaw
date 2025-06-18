@@ -170,7 +170,7 @@ function iterations_SW(InitialValues,G,k,eps,seuil) # fait des itérations jusqu
 
     if nb_iter > seuil  # pas de convergence 
         print("Pas de convergence (iterations_SW). Erreur pour la dernière itération : ",sum(norm.(prevInitialValues-InitialValues)),"\n")
-        InitialValues[n+1]=0 # pour donner un social welfare de 0, pour pas interférer
+        # InitialValues[n+1]=0 # pour donner un social welfare de 0, pour pas interférer
     end
 end
 

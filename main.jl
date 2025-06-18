@@ -12,17 +12,16 @@ include("game_gen.jl")
 include("npa_upbound_Qcorr.jl")
 include("bad_seesaw_lowbound.jl")
 
-function plot_NPAopt(G,lv,nb_steps)
-    ratios = range(0, 1, length=nb_steps)
+
+
+
+function plot_NPAopt(G,lv,ratios) 
     upbounds = [NPAopt(change_game(G,rat),lv) for rat in ratios]
     plot(ratios,upbounds,title="Majorant NPA",xlabel="v0/(v0+v1)")
 end
 
-function bad_plot_seesaw(G,k,povms,eps,seuil,nb_tests,nb_steps)
-    ratios = range(0, 1, length=nb_steps)
-    lowbounds = [many_tests(change_game(G,rat),k,povms,eps,seuil,nb_tests,-1) for rat in ratios]
-    plot(ratios,lowbounds,title="Minorant see-saw",xlabel="v0/(v0+v1)")
-end #optimisable (calculer given_InitialValues une seule fois au lieu de le faire pour chaque ratio)
+
+
 
 function plot_seesaw(G,k,povms,eps,seuil,nb_tests,ratios)
     # Pour les valeurs initiales : 
