@@ -24,7 +24,7 @@ function enum_tuples(n) # Énumère {0,1}^n sous forme d'une liste de n-uplets
 end
 
 function change_tuple(x,i,yi,n) # remplace la i-ème coordonnée de l'uplet x (de taille n) par yi (renvoie un nouvel uplet)
-    return ntuple(j -> if j==i yi else x[i] end,n)
+    return ntuple(j -> if j==i yi else x[j] end,n)
 end
 
 function +(X::Polynomial,n::Number) # définit X+0 où X est un polynôme NPA et 0 est le nombre
@@ -103,7 +103,6 @@ function NashConstraint_for_i(i,ti,G,P)  # Contraintes d'équilibre de Nash pour
     mus = [[0,0],[0,1],[1,0],[1,1]] # fonctions mu_i possibles, de A_i -> A_i, identifiées à des tableaux 
 
     Deviated_Gain_for_i(ri,mui) = sum(u(i,change_tuple(a,i,mui[a[i]+1],n),t,G) * P(a,change_tuple(t,i,ri,n)) * Pinit(t) for t in T_such_that for a in A) # Gain pour i lorsqu'il dévie de sa stratégie
-    # Deviated_Gain_for_i(ri,mui) = Gain_for_i
 
     return [Gain_for_i - Deviated_Gain_for_i(ri,mui) for mui in mus for ri in 0:1] # on veut que le gain actuel pour i soit toujours meilleur que lorsqu'il dévie de sa stratégie
 end
@@ -147,6 +146,19 @@ function NPAopt(G,lv)
 
     return npa_max(SWnpa(G,P),lv,ge=NashConstraints(G,P)) # On optimise le social welfare sous la contrainte "équilibre de Nash"
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
