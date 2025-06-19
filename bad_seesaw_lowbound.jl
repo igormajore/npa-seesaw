@@ -103,59 +103,105 @@ end
 
 # Itérations du see-saw
 
-function one_iteration_SW(InitialValues,G,k) # Applique une itération du see-saw, et modifie InitialValues avec les nouvelles valeurs. 
+function one_iteration_SW(InitialValues,G,k,delta) # Applique une itération du see-saw, et modifie InitialValues avec les nouvelles valeurs. 
     n,_,_,_,_,_ = G
 
     # SDP sur rho 
+    current_SW = SW(InitialValues,G)
+    current_rho = InitialValues[n+1]
+
     model = Model(SCS.Optimizer)
-    set_silent(model)
+    set_silent(model) 
+
     @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
+    set_start_value.(rho,InitialValues[n+1])
+
     @constraint(model,LinearAlgebra.tr(rho)==1)
+
     param = [if j==n+1 rho else InitialValues[j] end for j in 1:(n+1)]
     @objective(model,Max,SW(param,G))
     JuMP.optimize!(model)
     InitialValues[n+1] = JuMP.value(rho)
 
+    if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+        InitialValues[n+1] = current_rho 
+    end
+
+
     # SDP sur les mesures de chaque joueur, dans l'ordre croissant 
     for i in 1:n
+        current_SW = SW(InitialValues,G)
+        current_Mi = InitialValues[i]
+
         model = Model(SCS.Optimizer)
         set_silent(model)
+
         @variable(model,N00[1:k,1:k],PSD)
+        set_start_value.(N00,InitialValues[i][1,1])
+
         @variable(model,N10[1:k,1:k],PSD)
+        set_start_value.(N10,InitialValues[i][2,1])
+
         @variable(model,N01[1:k,1:k],PSD)
+        set_start_value.(N01,InitialValues[i][1,2])
+
         @variable(model,N11[1:k,1:k],PSD)
+        set_start_value.(N11,InitialValues[i][2,2])
+
         @constraint(model,N00+N10==LinearAlgebra.I)
         @constraint(model,N01+N11==LinearAlgebra.I)
+
         N = [[N00,N10] [N01,N11]]
         param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
         @objective(model,Max,SW(param,G))
         JuMP.optimize!(model)
         InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
+
+        if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+            InitialValues[i] = current_Mi
+        end
     end
 end
 
-function one_iteration_Gain_for_i(InitialValues,G,k) # Applique une itération du see-saw où chaque joueur optimise son propre gain (pour arriver à un équilibre)
+function one_iteration_Gain_for_i(InitialValues,G,k,delta) # Applique une itération du see-saw où chaque joueur optimise son propre gain (pour arriver à un équilibre)
     n,_,_,_,_,_ = G 
 
     # SDP sur les mesures de chaque joueur, dans l'ordre croissant 
     for i in 1:n 
+        current_Gain_for_i = Gain_for_i(i,InitialValues,G)
+        current_Mi = InitialValues[i]
+
         model=Model(SCS.Optimizer)
         set_silent(model)
+
         @variable(model,N00[1:k,1:k],PSD)
+        set_start_value.(N00,InitialValues[i][1,1])
+
         @variable(model,N10[1:k,1:k],PSD)
+        set_start_value.(N10,InitialValues[i][2,1])
+
         @variable(model,N01[1:k,1:k],PSD)
+        set_start_value.(N01,InitialValues[i][1,2])
+
         @variable(model,N11[1:k,1:k],PSD)
+        set_start_value.(N11,InitialValues[i][2,2])
+
         @constraint(model,N00+N10==LinearAlgebra.I)
         @constraint(model,N01+N11==LinearAlgebra.I)
+        
         N = [[N00,N10] [N01,N11]]
         param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
         @objective(model,Max,Gain_for_i(i,param,G))
         JuMP.optimize!(model)
         InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]   
+
+        if Gain_for_i(i,InitialValues,G) < current_Gain_for_i + delta # si le joueur i n'améliore pas assez son gain, on reste sur la solution qu'on avait de base 
+            InitialValues[i] = current_Mi
+        end
     end
 end 
 
-function iterations_SW(InitialValues,G,k,eps,seuil) # fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence eps
+function iterations_SW(InitialValues,G,k,delta,eps,seuil) # fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence eps
     n,_,_,_,_,_=G
     
     prevInitialValues = []
@@ -163,7 +209,7 @@ function iterations_SW(InitialValues,G,k,eps,seuil) # fait des itérations jusqu
 
     while nb_iter <= seuil
         prevInitialValues = copy(InitialValues)
-        one_iteration_SW(InitialValues,G,k)
+        one_iteration_SW(InitialValues,G,k,delta)
         sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         nb_iter+=1
     end
@@ -174,7 +220,7 @@ function iterations_SW(InitialValues,G,k,eps,seuil) # fait des itérations jusqu
     end
 end
 
-function iterations_Gain_for_i(InitialValues,G,k,eps,seuil) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
+function iterations_Gain_for_i(InitialValues,G,k,delta,eps,seuil) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
     n,_,_,_,_,_=G
     
     prevInitialValues = []
@@ -182,8 +228,7 @@ function iterations_Gain_for_i(InitialValues,G,k,eps,seuil) # fait des itératio
 
     while nb_iter <= seuil
         prevInitialValues = copy(InitialValues)
-        one_iteration_Gain_for_i(InitialValues,G,k)
-        # print("anotherone : delta = ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        one_iteration_Gain_for_i(InitialValues,G,k,delta)
         sum(norm.(prevInitialValues-InitialValues)) > eps || break 
         nb_iter+=1
     end
@@ -194,9 +239,9 @@ function iterations_Gain_for_i(InitialValues,G,k,eps,seuil) # fait des itératio
     end
 end
 
-function seesaw(InitialValues,G,k,eps,seuil)
-    iterations_SW(InitialValues,G,k,eps,seuil)
-    iterations_Gain_for_i(InitialValues,G,k,eps,seuil)
+function seesaw(InitialValues,G,k,delta,eps,seuil)
+    iterations_SW(InitialValues,G,k,delta,eps,seuil)
+    iterations_Gain_for_i(InitialValues,G,k,delta,eps,seuil)
     return SW(InitialValues,G) # 0 si on a pas eu de convergence
 end
 
@@ -261,14 +306,14 @@ function random_InitialValues(G,k)
     push!(InitialValues,rho) 
 end
 
-function many_tests(G,k,povms,eps,seuil,nb_tests,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
+function many_tests(G,k,delta,povms,eps,seuil,nb_aleas,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
     best_sw = 0
     
     # POVMs aléatoires
     print("POVMs aléatoires :\n")
-    for i in 1:nb_tests 
+    for i in 1:nb_aleas
         InitialValues = random_InitialValues(G,k)
-        sw = seesaw(InitialValues,G,k,eps,seuil)
+        sw = seesaw(InitialValues,G,k,delta,eps,seuil)
         if sw>barre
             print(SW(InitialValues,G))
             print("\n")
@@ -281,7 +326,7 @@ function many_tests(G,k,povms,eps,seuil,nb_tests,barre) # Fait plusieurs tests e
     # POVMs donnés 
     print("POVMs contrôlés :\n")
     for InitialValues in given_InitialValues(G,k,povms)
-        sw = seesaw(InitialValues,G,k,eps,seuil)
+        sw = seesaw(InitialValues,G,k,delta,eps,seuil)
         if sw>barre
             print(SW(InitialValues,G))
             print("\n")
