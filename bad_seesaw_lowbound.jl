@@ -43,6 +43,7 @@ povm_hadamard = [ (1/2)*[[1,1] [1,1]] , (1/2)*[[1,-1] [-1,1]] ]
 povm_hadamard_renverse = [ (1/2)*[[1,-1] [-1,1]] , (1/2)*[[1,1] [1,1]] ]
 povms1 = [povm_canonique,povm_hadamard]
 povms2 = [povm_canonique,povm_canonique_renverse,povm_hadamard,povm_hadamard_renverse]
+Z = [[1,0] [0,-1]]
 
 
 
@@ -337,5 +338,41 @@ function many_tests(G,k,delta,povms,eps,seuil,nb_aleas,barre) # Fait plusieurs t
     end
 
     return best_sw
+end
+
+function controlled_gate(n,i,j,U) # Matrice U contrôlée sur un système de n parties (l'espace total est donc de dimension 2^n). Le bit de contrôle est i, le bit cible est j. 
+    @assert i!=j
+    
+    function to_kron_first_term(player) 
+        if player == i 
+            return povm_canonique[1]
+        else 
+            return Matrix(I,2,2)
+        end
+    end
+
+    function to_kron_second_term(player)
+        if player == i 
+            return povm_canonique[2]
+        elseif player == j 
+            return U 
+        else 
+            return Matrix(I,2,2)
+        end
+    end
+
+    return krons([to_kron_first_term(player) for player in 1:n]) + krons([to_kron_second_term(player) for player in 1:n])
+end
+
+function pseudo_telepathy(n)  # renvoie l'état et les mesures de la stratégie pseudo-télépathique pour le graphe cyclique à n joueurs 
+    proj_plus = povm_hadamard[1] # |+><+|
+
+    CZ(i,j) = controlled_gate(n,i,j,Z)
+
+    rho = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([proj_plus for i in 1:n]) * CZ(n,1)*prod(CZ(i,i+1) for i in (n-1):(-1):1)
+
+    measures = [povm_canonique povm_hadamard]
+
+    return [if i==n+1 rho else copy(measures) end for i in 1:(n+1)]
 end
 
