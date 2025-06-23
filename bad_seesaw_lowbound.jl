@@ -421,6 +421,142 @@ end
 
 
 
+# see-saw mixte : les joueurs 1<=i<=m ont un accès quantique, les joueurs m+1<=i<=n ont un accès classique
+
+function one_iteration_mixte(InitialValues,G,k,m,delta) # Applique une itération du see-saw, et modifie InitialValues avec les nouvelles valeurs. 
+    n,_,_,_,_,_ = G
+
+    # SDP sur rho 
+    current_SW = SW(InitialValues,G)
+    current_rho = InitialValues[n+1]
+
+    model = Model(SCS.Optimizer)
+    set_silent(model) 
+
+    @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
+    set_start_value.(rho,InitialValues[n+1])
+
+    @constraint(model,LinearAlgebra.tr(rho)==1)
+
+    param = [if j==n+1 rho else InitialValues[j] end for j in 1:(n+1)]
+    @objective(model,Max,SW(param,G))
+    JuMP.optimize!(model)
+    InitialValues[n+1] = JuMP.value(rho)
+
+    if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+        InitialValues[n+1] = current_rho 
+    end
+
+
+
+    # SDP sur les mesures de chaque joueur ayant un accès quantique, dans l'ordre croissant 
+    for i in 1:m
+        current_SW = SW(InitialValues,G)
+        current_Mi = InitialValues[i]
+
+        model = Model(SCS.Optimizer)
+        set_silent(model)
+
+        @variable(model,N00[1:k,1:k],PSD)
+        set_start_value.(N00,InitialValues[i][1,1])
+
+        @variable(model,N10[1:k,1:k],PSD)
+        set_start_value.(N10,InitialValues[i][2,1])
+
+        @variable(model,N01[1:k,1:k],PSD)
+        set_start_value.(N01,InitialValues[i][1,2])
+
+        @variable(model,N11[1:k,1:k],PSD)
+        set_start_value.(N11,InitialValues[i][2,2])
+
+        @constraint(model,N00+N10==LinearAlgebra.I)
+        @constraint(model,N01+N11==LinearAlgebra.I)
+
+        N = [[N00,N10] [N01,N11]]
+        param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
+        @objective(model,Max,SW(param,G))
+        JuMP.optimize!(model)
+        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
+
+        if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+            InitialValues[i] = current_Mi
+        end
+    end
+
+
+
+    # SDP sur les mesures de chaque joueur ayant un accès classique, dans l'ordre croissant 
+    for i in (m+1):n
+        model = Model(SCS.Optimizer)
+        set_silent(model)
+
+        @variable(model,N00[1:k,1:k],PSD)
+
+        @variable(model,N10[1:k,1:k],PSD)
+
+        @variable(model,N01[1:k,1:k],PSD)
+
+        @variable(model,N11[1:k,1:k],PSD)
+
+        @constraint(model,N00+N10==LinearAlgebra.I)
+        @constraint(model,N01+N11==LinearAlgebra.I)
+
+        N = [[N00,N10] [N01,N11]]
+        param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
+
+        # Contraintes que la corrélation soit un équilibre pour le joueur i 
+        for cons in seesaw_NashConstraints_for_i(i,param,G)
+            @constraint(model,cons >= 0)
+        end
+
+        @objective(model,Max,SW(param,G))
+        JuMP.optimize!(model)
+        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
+    end
+end
+
+function iterations_mixte(InitialValues,G,k,m,delta,eps,seuil) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
+    n,_,_,_,_,_=G
+    
+    prevInitialValues = []
+    nb_iter = 1
+
+    while nb_iter <= seuil
+        prevInitialValues = copy(InitialValues)
+        one_iteration_mixte(InitialValues,G,k,m,delta)
+        sum(norm.(prevInitialValues-InitialValues)) > eps || break 
+        nb_iter+=1
+    end
+
+    if nb_iter > seuil  # pas de convergence 
+        print("Pas de convergence (iterations_mixte). Erreur pour la dernière itération : ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        InitialValues[n+1]=0 # pour donner un social welfare de 0, pour pas interférer 
+    end
+end
+
+function seesaw_mixte(InitialValues,G,k,m,delta,eps,seuil)
+    iterations_SW(InitialValues,G,k,delta,eps,seuil)
+    iterations_mixte(InitialValues,G,k,m,delta,eps,seuil)
+    return SW(InitialValues,G) # 0 si on a pas eu de convergence
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
