@@ -23,7 +23,8 @@ end
 
 
 
-function plot_seesaw(G,k,povms,eps,seuil,nb_alea,ratios)
+
+function plot_seesaw(myseesaw,G,k,povms,nb_alea,ratios) # bonnes valeurs : eps = delta = 1e-6, seuil = 200
     # Pour les valeurs initiales : 
     #       - une est la meilleure pour le ratio v0/(v0+v1) précédent (pour la première valeur de ratio, une valeur initiale est choisie aléatoirement) ; 
     #       - nb_alea sont choisies aléatoirement ; 
@@ -45,7 +46,7 @@ function plot_seesaw(G,k,povms,eps,seuil,nb_alea,ratios)
         # meilleure pour le ratio précédent 
         print("\nMeilleure pour le ratio précédent\n")
         InitialValues = copy(best_InitialValues)
-        sw = seesaw(InitialValues,G,k,delta,eps,seuil)
+        sw = myseesaw(InitialValues,G)
         print(sw,"\n")
 
         best_InitialValues = InitialValues # Mise à jour de best_sw = best_InitialValues, qui contiennent le record pour l'itération actuelle
@@ -56,7 +57,7 @@ function plot_seesaw(G,k,povms,eps,seuil,nb_alea,ratios)
         print("\nMesures aléatoires\n")
         for i in 1:nb_alea
             InitialValues=random_InitialValues(G,k)
-            sw = seesaw(InitialValues,G,k,delta,eps,seuil)
+            sw = myseesaw(InitialValues,G)
             print(sw,"\n")
             if sw>best_sw
                 best_InitialValues = InitialValues
@@ -70,7 +71,7 @@ function plot_seesaw(G,k,povms,eps,seuil,nb_alea,ratios)
         print("\nMesures prescrites\n")
         to_do = copy.(AllInitialValues)
         for InitialValues in to_do 
-            sw = seesaw(InitialValues,G,k,delta,eps,seuil)
+            sw = myseesaw(InitialValues,G)
             print(sw,"\n")
             if sw>best_sw
                 best_InitialValues = InitialValues
@@ -85,10 +86,7 @@ function plot_seesaw(G,k,povms,eps,seuil,nb_alea,ratios)
     plot(ratios,lowbounds,title="Minorant see-saw",xlabel="v0/(v0+v1)")
 end
 
-# Pour la convergence, seuil=30 est trop peu (essayer seuil=200)
 
-#= pour plot seesaw 
-G=NC_00_cycle(3,0);k=2;eps=1e-5;seuil=200;
-plot_seesaw(G,k,povms1,eps,seuil,30,range(0,0.8,length=20))
-=#
+
+
 

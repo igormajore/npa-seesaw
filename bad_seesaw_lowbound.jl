@@ -27,6 +27,18 @@ Comme les actions et types sont à valeurs dans {0,1} mais les indices d'array s
 
 # Fonctions auxiliaires
 
+function enum_tuples(n) # Énumère {0,1}^n sous forme d'une liste de n-uplets
+    if n==0
+       return [()]
+    else 
+       return vcat([(0,a...) for a in enum_tuples(n-1)],[(1,a...) for a in enum_tuples(n-1)])
+    end
+end
+
+function change_tuple(x,i,yi,n) # remplace la i-ème coordonnée de l'uplet x (de taille n) par yi (renvoie un nouvel uplet)
+    return ntuple(j -> if j==i yi else x[j] end,n)
+end
+
 function krons(lst) # calcule le produit tensoriel de toutes les matrices de lst, supposée non vide
     n = length(lst)
     @assert n>0
@@ -102,7 +114,7 @@ end
 
 
 
-# Itérations du see-saw
+# see-saw pour Q
 
 function one_iteration_SW(InitialValues,G,k,delta) # Applique une itération du see-saw, et modifie InitialValues avec les nouvelles valeurs. 
     n,_,_,_,_,_ = G
@@ -240,11 +252,168 @@ function iterations_Gain_for_i(InitialValues,G,k,delta,eps,seuil) # fait des it�
     end
 end
 
-function seesaw(InitialValues,G,k,delta,eps,seuil)
+function seesaw_Q(InitialValues,G,k,delta,eps,seuil)
     iterations_SW(InitialValues,G,k,delta,eps,seuil)
     iterations_Gain_for_i(InitialValues,G,k,delta,eps,seuil)
     return SW(InitialValues,G) # 0 si on a pas eu de convergence
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# see-saw pour Qcorr
+
+function seesaw_NashConstraints_for_i_for_ti(i,ti,param,G)  # Contraintes d'équilibre de Nash pour le joueur i lorsqu'il reçoit le type ti
+    n,T,W,v0,v1,Pinit = G
+
+    T_such_that = [] # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer 
+    for t in T 
+        if t[i]==ti 
+            push!(T_such_that,t)
+        end
+    end
+
+    A = enum_tuples(n)
+
+    Gain_for_i = sum(u(i,a,t,G) * Pinit(t) * P(a,t,param,G) for t in T_such_that for a in A) # gain actuel pour le joueur i : ce qu'on veut optimiser
+
+    mus = [[0,0],[0,1],[1,0],[1,1]] # fonctions mu_i possibles, de A_i -> A_i, identifiées à des tableaux 
+
+    Deviated_Gain_for_i(ri,mui) = sum(u(i,change_tuple(a,i,mui[a[i]+1],n),t,G) * P(a,change_tuple(t,i,ri,n),param,G) * Pinit(t) for t in T_such_that for a in A) # Gain pour i lorsqu'il dévie de sa stratégie
+
+    return [Gain_for_i - Deviated_Gain_for_i(ri,mui) for mui in mus for ri in 0:1] # on veut que le gain actuel pour i soit toujours meilleur que lorsqu'il dévie de sa stratégie
+end
+
+function seesaw_NashConstraints_for_i(i,param,G) # Contraintes d'équilibre de Nash pour le joueur i 
+    return [seesaw_NashConstraints_for_i_for_ti(i,0,param,G) ; seesaw_NashConstraints_for_i_for_ti(i,1,param,G)]
+end
+
+function seesaw_NashConstraints(param,G) # Liste de toutes les contraintes d'équilibre de Nash
+    n,_,_,_,_,_ = G
+    constraints = []
+    
+    for i in 1:n 
+        constraints = [constraints ; seesaw_NashConstraints_for_i(i,param,G)]
+    end
+
+    return constraints # concaténation de toutes les contraintes pour chaque joueur i
+end
+
+function one_iteration_Qcorr(InitialValues,G,k,delta) # Applique une itération du see-saw, et modifie InitialValues avec les nouvelles valeurs. 
+    n,_,_,_,_,_ = G
+
+    # SDP sur rho 
+    current_SW = SW(InitialValues,G)
+    current_rho = InitialValues[n+1]
+
+    model = Model(SCS.Optimizer)
+    set_silent(model) 
+
+    @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
+    set_start_value.(rho,InitialValues[n+1])
+
+    @constraint(model,LinearAlgebra.tr(rho)==1)
+
+    param = [if j==n+1 rho else InitialValues[j] end for j in 1:(n+1)]
+    @objective(model,Max,SW(param,G))
+    JuMP.optimize!(model)
+    InitialValues[n+1] = JuMP.value(rho)
+
+    if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+        InitialValues[n+1] = current_rho 
+    end
+
+
+    # SDP sur les mesures de chaque joueur, dans l'ordre croissant 
+    for i in 1:n
+        model = Model(SCS.Optimizer)
+        set_silent(model)
+
+        @variable(model,N00[1:k,1:k],PSD)
+
+        @variable(model,N10[1:k,1:k],PSD)
+
+        @variable(model,N01[1:k,1:k],PSD)
+
+        @variable(model,N11[1:k,1:k],PSD)
+
+        @constraint(model,N00+N10==LinearAlgebra.I)
+        @constraint(model,N01+N11==LinearAlgebra.I)
+
+        N = [[N00,N10] [N01,N11]]
+        param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
+
+        # Contraintes que la corrélation soit un équilibre pour le joueur i 
+        for cons in seesaw_NashConstraints_for_i(i,param,G)
+            @constraint(model,cons >= 0)
+        end
+
+        @objective(model,Max,SW(param,G))
+        JuMP.optimize!(model)
+        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
+    end
+end
+
+function iterations_Qcorr(InitialValues,G,k,delta,eps,seuil) # fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence eps
+    n,_,_,_,_,_=G
+    
+    prevInitialValues = []
+    nb_iter = 1
+
+    while nb_iter <= seuil
+        prevInitialValues = copy(InitialValues)
+        one_iteration_Qcorr(InitialValues,G,k,delta)
+        sum(norm.(prevInitialValues-InitialValues)) > eps || break 
+        nb_iter+=1
+    end
+
+    if nb_iter > seuil  # pas de convergence 
+        print("Pas de convergence (iterations_Qcorr). Erreur pour la dernière itération : ",sum(norm.(prevInitialValues-InitialValues)),"\n")
+        InitialValues[n+1]=0 # pour donner un social welfare de 0, pour pas interférer 
+    end
+end
+
+function seesaw_Qcorr(InitialValues,G,k,delta,eps,seuil)
+    iterations_Qcorr(InitialValues,G,k,delta,eps,seuil)
+    return SW(InitialValues,G) # 0 si on a pas eu de convergence
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -307,14 +476,14 @@ function random_InitialValues(G,k)
     push!(InitialValues,rho) 
 end
 
-function many_tests(G,k,delta,povms,eps,seuil,nb_aleas,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
+function many_tests(myseesaw,G,k,povms,nb_aleas,barre) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Affiche ceux dont le social welfare dépasse barre
     best_sw = 0
     
     # POVMs aléatoires
     print("POVMs aléatoires :\n")
     for i in 1:nb_aleas
         InitialValues = random_InitialValues(G,k)
-        sw = seesaw(InitialValues,G,k,delta,eps,seuil)
+        sw = myseesaw(InitialValues,G)
         if sw>barre
             print(SW(InitialValues,G))
             print("\n")
@@ -327,7 +496,7 @@ function many_tests(G,k,delta,povms,eps,seuil,nb_aleas,barre) # Fait plusieurs t
     # POVMs donnés 
     print("POVMs contrôlés :\n")
     for InitialValues in given_InitialValues(G,k,povms)
-        sw = seesaw(InitialValues,G,k,delta,eps,seuil)
+        sw = myseesaw(InitialValues,G)
         if sw>barre
             print(SW(InitialValues,G))
             print("\n")

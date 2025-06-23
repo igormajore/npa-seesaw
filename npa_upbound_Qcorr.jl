@@ -86,7 +86,7 @@ end
 
 # Contraintes d'équilibre de Nash
 
-function NashConstraint_for_i(i,ti,G,P)  # Contraintes d'équilibre de Nash pour le joueur i lorsqu'il reçoit le type ti, en connaissant la corrélation P
+function npa_NashConstraints_for_i_for_ti(i,ti,G,P)  # Contraintes d'équilibre de Nash pour le joueur i lorsqu'il reçoit le type ti, en connaissant la corrélation P
     n,T,W,v0,v1,Pinit = G
 
     T_such_that = [] # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer 
@@ -107,14 +107,16 @@ function NashConstraint_for_i(i,ti,G,P)  # Contraintes d'équilibre de Nash pour
     return [Gain_for_i - Deviated_Gain_for_i(ri,mui) for mui in mus for ri in 0:1] # on veut que le gain actuel pour i soit toujours meilleur que lorsqu'il dévie de sa stratégie
 end
 
-function NashConstraints(G,P) # Liste de toutes les contraintes d'équilibre de Nash, sous forme d'une liste de polynômes NPA qui doivent être positifs, comme attendu par la fonction npa_max 
+function npa_NashConstraints_for_i(i,G,P)
+    return [npa_NashConstraints_for_i_for_ti(i,0,G,P) ; npa_NashConstraints_for_i_for_ti(i,1,G,P)]
+end
+
+function npa_NashConstraints(G,P) # Liste de toutes les contraintes d'équilibre de Nash, sous forme d'une liste de polynômes NPA qui doivent être positifs, comme attendu par la fonction npa_max 
     n,_,_,_,_,_ = G
     constraints = []
     
     for i in 1:n 
-        for ti in 0:1 
-            constraints = [constraints ; NashConstraint_for_i(i,ti,G,P)]
-        end
+        constraints = [constraints ; npa_NashConstraints_for_i(i,G,P)]
     end
 
     return constraints # concaténation de toutes les contraintes pour chaque joueur i, chaque type ti
@@ -144,7 +146,7 @@ function NPAopt(G,lv)
     # Définition de la corrélation
     P(a,t) = prod(M[j][a[j]+1,t[j]+1] for j in 1:n)
 
-    return npa_max(SWnpa(G,P),lv,ge=NashConstraints(G,P)) # On optimise le social welfare sous la contrainte "équilibre de Nash"
+    return npa_max(SWnpa(G,P),lv,ge=npa_NashConstraints(G,P)) # On optimise le social welfare sous la contrainte "équilibre de Nash"
 end
 
 
