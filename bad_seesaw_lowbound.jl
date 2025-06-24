@@ -451,10 +451,10 @@ function one_iteration_mixte(InitialValues,G,k,m,delta) # Applique une itératio
 
     # SDP sur les mesures de chaque joueur ayant un accès quantique, dans l'ordre croissant 
     for i in 1:m
-        current_SW = SW(InitialValues,G)
+        current_Gain_for_i = Gain_for_i(i,InitialValues,G)
         current_Mi = InitialValues[i]
 
-        model = Model(SCS.Optimizer)
+        model=Model(SCS.Optimizer)
         set_silent(model)
 
         @variable(model,N00[1:k,1:k],PSD)
@@ -471,14 +471,14 @@ function one_iteration_mixte(InitialValues,G,k,m,delta) # Applique une itératio
 
         @constraint(model,N00+N10==LinearAlgebra.I)
         @constraint(model,N01+N11==LinearAlgebra.I)
-
+        
         N = [[N00,N10] [N01,N11]]
         param = [if j==i N else InitialValues[j] end for j in 1:(n+1)]
-        @objective(model,Max,SW(param,G))
+        @objective(model,Max,Gain_for_i(i,param,G))
         JuMP.optimize!(model)
-        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
+        InitialValues[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]   
 
-        if SW(InitialValues,G) < current_SW + delta # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait de base 
+        if Gain_for_i(i,InitialValues,G) < current_Gain_for_i + delta # si le joueur i n'améliore pas assez son gain, on reste sur la solution qu'on avait de base 
             InitialValues[i] = current_Mi
         end
     end

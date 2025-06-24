@@ -10,7 +10,7 @@ Le fichier main sert aussi à faire les plots
 
 include("game_gen.jl")
 include("npa_upbound_Qcorr.jl")
-include("bad_seesaw_lowbound.jl")
+include("clean_bad_seesaw_lowbound.jl")
 
 
 
@@ -24,18 +24,18 @@ end
 
 
 
-function plot_seesaw(myseesaw,G,k,povms,nb_alea,ratios) # bonnes valeurs : eps = delta = 1e-6, seuil = 200
+function plot_seesaw(G,Param,m,k,NbAlea,povms,ratios) 
     # Pour les valeurs initiales : 
     #       - une est la meilleure pour le ratio v0/(v0+v1) précédent (pour la première valeur de ratio, une valeur initiale est choisie aléatoirement) ; 
-    #       - nb_alea sont choisies aléatoirement ; 
-    #       - on teste aussi tous les éléments de given_InitialValues(G,k,povms) (tableau AllInitialValues)
+    #       - NbAlea sont choisies aléatoirement ; 
+    #       - on teste aussi tous les éléments de given_QSol(G,povms) 
 
     G = change_game(G,ratios[1])
-    AllInitialValues = given_InitialValues(G,k,povms)
+    QSols = given_QSol(G,povms)
     lowbounds= []
 
-    best_InitialValues = random_InitialValues(G,k)
-    best_sw = SW(best_InitialValues,G)
+    best_QSol = random_QSol(G,k)
+    best_sw = SW(QSol,G)
 
     for rat in ratios 
         # best_sw,best_InitialValues contiennent les records pour l'itération précédente
@@ -45,37 +45,37 @@ function plot_seesaw(myseesaw,G,k,povms,nb_alea,ratios) # bonnes valeurs : eps =
 
         # meilleure pour le ratio précédent 
         print("\nMeilleure pour le ratio précédent\n")
-        InitialValues = copy(best_InitialValues)
-        sw = myseesaw(InitialValues,G)
+        QSol = copy(best_QSol)
+        sw = seesaw_mixte(QSol,G,Param,m)
         print(sw,"\n")
 
-        best_InitialValues = InitialValues # Mise à jour de best_sw = best_InitialValues, qui contiennent le record pour l'itération actuelle
+        best_QSol = QSol # Mise à jour de best_QSol et best_sw, qui contiennent à présent le record pour l'itération actuelle
         best_sw = sw
 
 
         # aléatoires 
         print("\nMesures aléatoires\n")
-        for i in 1:nb_alea
-            InitialValues=random_InitialValues(G,k)
-            sw = myseesaw(InitialValues,G)
+        for _ in 1:NbAlea
+            QSol=random_QSol(G,k)
+            sw = seesaw_mixte(QSol,G,Param,m)
             print(sw,"\n")
             if sw>best_sw
-                best_InitialValues = InitialValues
+                best_QSol = QSol
                 best_sw = sw
                 print("Amélioration : nouveau sw est ",best_sw,"\n")
             end
         end
 
 
-        # given_InitialValues(G,k,povms)
+        # given_QSol(G,povms)
         print("\nMesures prescrites\n")
-        to_do = copy.(AllInitialValues)
-        for InitialValues in to_do 
-            sw = myseesaw(InitialValues,G)
+        to_do = copy.(QSols)
+        for QSol in to_do 
+            sw = seesaw_mixte(QSol,G,Param,m)
             print(sw,"\n")
             if sw>best_sw
-                best_InitialValues = InitialValues
-                best_sw = sw 
+                best_QSol = QSol
+                best_sw = sw
                 print("Amélioration : nouveau sw est ",best_sw,"\n")
             end
         end
