@@ -31,6 +31,10 @@ NbTentatives est le nombre d'itérations qu'on s'autorise avant de considérer q
 
 Les paramètres de la résolution numérique sont regroupés dans une variable Param = (Approx,NbTentatives).
 
+J'ai aussi introduit une variable Version = (do_StabC : bool,do_OptRho : bool,to_OptC : Float dans [0,1]) qui permet de tester différentes versions de l'algorithme. do_StabC signifie qu'on active un stabilisateur pour les joueurs classiques. Lorsque 
+cette variable vaut true, chaque joueur classique i commence par vérifier si QSol est un équilibre (corrélé) pour i, et ne fait rien si c'est le cas. do_OptRho est une variable qui indique si on fait l'optimisation sur rho dans iterations_equilibre. 
+to_OptC permet de déterminer la fonction qu'on optimise pour les itérations sur les joueurs classiques : il s'agit de to_OptC*SW + (1-to_OptC)*Gain_for_i. 
+
 
 Comme les actions et types sont à valeurs dans {0,1} mais les indices d'array sont dans {1,...}, il y a un décalage d'indices.
 
@@ -42,7 +46,7 @@ Comme les actions et types sont à valeurs dans {0,1} mais les indices d'array s
 
 L'algorithme est le suivant : 
     Étape 1 : Optimiser SW sans contrainte (fonction iterations_SW).
-    Étape 2 : Les joueurs 1<=i<=m optimisent leur propre gain (fonction Gain_for_i) sans contrainte, et les joueurs m+1<=i<=n optimisent SW sous la contrainte d'être un équilibre corrélé pour i (fonction iterations_equilibre). 
+    Étape 2 : Les joueurs 1<=i<=m optimisent leur propre gain (fonction Gain_for_i) sans contrainte, et les joueurs m+1<=i<=n optimisent SW (ou une combinaison convexe de SW et Gain_for_i, cf ci-dessus) sous la contrainte d'être un équilibre corrélé pour i (fonction iterations_equilibre). 
 
 =#
 
@@ -79,6 +83,10 @@ function krons(lst) # Calcule le produit tensoriel de toutes les matrices de lst
         prod = kron(prod,lst[i])
     end
     return prod 
+end
+
+function randfloat(a,b) # Nombre aléatoire flottant entre a et b
+    return a + (b-a)*rand(Float64)
 end
 
 povm_canonique = [ [[1,0] [0,0]] , [[0,0] [0,1]] ]
@@ -177,6 +185,18 @@ end
 
 function seesaw_NashConstraints_for_i(i,QSol,G) # Contraintes d'équilibre de Nash pour le joueur i (m+1<=i<=n)
     return [seesaw_NashConstraints_for_i_for_ti(i,0,QSol,G) ; seesaw_NashConstraints_for_i_for_ti(i,1,QSol,G)]
+end
+
+function is_equilibrium_for_i(i,QSol,G,Param) # Teste si la solution vérifie les contraintes d'équilibre pour le joueur i, à ApproxStab près
+    ((ApproxStab,_),_) = Param 
+
+    for c in seesaw_NashConstraints_for_i(i,QSol,G)
+        if c < -ApproxStab 
+            return false 
+        end
+    end
+
+    return true
 end
 
 
@@ -287,32 +307,34 @@ function iterations_SW(QSol,G,Param) # Fait des itérations jusqu'à obtenir un 
     end
 end
 
-function une_iteration_equilibre(QSol,G,Param,m) # Applique une itération du see-saw pour obtenir un équilibre, et modifie QSol avec la nouvelle solution obtenue.  
+function une_iteration_equilibre(QSol,G,Param,Version,m) # Applique une itération du see-saw pour obtenir un équilibre, et modifie QSol avec la nouvelle solution obtenue.  
     n,_,_,_,_,_ = G
     (ApproxStab,_),_ = Param 
+    (do_StabC,do_OptRho,to_OptC) = Version
     k,_ = LinearAlgebra.size(QSol[1][1,1])
 
-    # SDP sur rho 
-    current_SW = SW(QSol,G) 
-    current_rho = QSol[n+1]
+    if do_OptRho      # SDP sur rho 
+        current_SW = SW(QSol,G) 
+        current_rho = QSol[n+1]
 
-    model = Model(SCS.Optimizer)
-    set_silent(model) 
+        model = Model(SCS.Optimizer)
+        set_silent(model) 
 
-    @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
-    set_start_value.(rho,QSol[n+1])
+        @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
+        set_start_value.(rho,QSol[n+1])
 
-    @constraint(model,LinearAlgebra.tr(rho)==1)
+        @constraint(model,LinearAlgebra.tr(rho)==1)
 
-    QSol_avec_variable = [if j==n+1 rho else QSol[j] end for j in 1:(n+1)]
-    @objective(model,Max,SW(QSol_avec_variable,G))
-    JuMP.optimize!(model)
-    QSol[n+1] = JuMP.value(rho)
+        QSol_avec_variable = [if j==n+1 rho else QSol[j] end for j in 1:(n+1)]
+        @objective(model,Max,SW(QSol_avec_variable,G))
+        JuMP.optimize!(model)
+        QSol[n+1] = JuMP.value(rho)
 
-    if SW(QSol,G) < current_SW + ApproxStab # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait initialement 
-        QSol[n+1] = current_rho 
+        if SW(QSol,G) < current_SW + ApproxStab # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait initialement 
+            QSol[n+1] = current_rho 
+        end
     end
-
+    
 
 
     # SDP sur les mesures de chaque joueur ayant un accès quantique, dans l'ordre croissant 
@@ -353,35 +375,39 @@ function une_iteration_equilibre(QSol,G,Param,m) # Applique une itération du se
 
     # SDP sur les mesures de chaque joueur ayant un accès classique, dans l'ordre croissant 
     for i in (m+1):n
-        model = Model(SCS.Optimizer)
-        set_silent(model)
 
-        @variable(model,N00[1:k,1:k],PSD)
+        if !do_StabC || !is_equilibrium_for_i(i,QSol,G,Param) # Stabilisateur pour les classiques : on ne modifie la mesure que si on n'est pas déjà sur un équilibre
 
-        @variable(model,N10[1:k,1:k],PSD)
+            model = Model(SCS.Optimizer)
+            set_silent(model)
 
-        @variable(model,N01[1:k,1:k],PSD)
+            @variable(model,N00[1:k,1:k],PSD)
 
-        @variable(model,N11[1:k,1:k],PSD)
+            @variable(model,N10[1:k,1:k],PSD)
 
-        @constraint(model,N00+N10==LinearAlgebra.I)
-        @constraint(model,N01+N11==LinearAlgebra.I)
+            @variable(model,N01[1:k,1:k],PSD)
 
-        N = [[N00,N10] [N01,N11]]
-        QSol_avec_variable = [if j==i N else QSol[j] end for j in 1:(n+1)]
+            @variable(model,N11[1:k,1:k],PSD)
 
-        # Contraintes que la corrélation soit un équilibre pour le joueur i 
-        for cons in seesaw_NashConstraints_for_i(i,QSol_avec_variable,G)
-            @constraint(model,cons >= 0)
+            @constraint(model,N00+N10==LinearAlgebra.I)
+            @constraint(model,N01+N11==LinearAlgebra.I)
+
+            N = [[N00,N10] [N01,N11]]
+            QSol_avec_variable = [if j==i N else QSol[j] end for j in 1:(n+1)]
+
+            # Contraintes que la corrélation soit un équilibre pour le joueur i 
+            for cons in seesaw_NashConstraints_for_i(i,QSol_avec_variable,G)
+                @constraint(model,cons >= 0)
+            end
+
+            @objective(model,Max,to_OptC*SW(QSol_avec_variable,G)+(1-to_OptC)*Gain_for_i(i,QSol_avec_variable,G))
+            JuMP.optimize!(model)
+            QSol[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
         end
-
-        @objective(model,Max,SW(QSol_avec_variable,G))
-        JuMP.optimize!(model)
-        QSol[i] = [[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]
     end
 end
 
-function iterations_equilibre(QSol,G,Param,m) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
+function iterations_equilibre(QSol,G,Param,Version,m) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
     n,_,_,_,_,_ = G
     (_,ApproxConv),NbTentatives = Param
     
@@ -390,7 +416,7 @@ function iterations_equilibre(QSol,G,Param,m) # Fait des itérations jusqu'à ob
 
     while nb_iter <= NbTentatives
         prevQSol = copy(QSol)
-        une_iteration_equilibre(QSol,G,Param,m)
+        une_iteration_equilibre(QSol,G,Param,Version,m)
         sum(norm.(prevQSol - QSol)) > ApproxConv || break 
         nb_iter+=1
     end
@@ -401,10 +427,10 @@ function iterations_equilibre(QSol,G,Param,m) # Fait des itérations jusqu'à ob
     end
 end
 
-function seesaw_mixte(QSol,G,Param,m)
+function seesaw_mixte(QSol,G,Param,Version,m)
     iterations_SW(QSol,G,Param)
-    iterations_equilibre(QSol,G,Param,m)
-    return SW(QSol,G) # =0 si on a pas eu de convergence
+    iterations_equilibre(QSol,G,Param,Version,m)
+    return SW(QSol,G) # =0 si on n'a pas eu de convergence
 end
 
 
@@ -441,6 +467,10 @@ end
 # Valeurs initiales 
 
 function given_QSol(G,povms) # povms est une liste de POVMs. Cette fonction renvoie toutes les solutions quantiques qu'on peut construire en partant des mesures dans la liste povms (et en prenant des états partagés aléatoires)
+    if povms==[]
+        return []
+    end
+    
     n,_,_,_,_,_ = G
     k,_ = LinearAlgebra.size(povms[1][1])
     
