@@ -17,89 +17,141 @@ include("clean_bad_seesaw_lowbound.jl")
 
 function plot_NPAopt(G,lv,ratios) 
     upbounds = [NPAopt(change_game(G,rat),lv) for rat in ratios]
-    plot(ratios,upbounds,title="Majorant NPA",xlabel="v0/(v0+v1)")
+    #plot(ratios,upbounds,title="Majorant NPA",xlabel="v0/(v0+v1)")
+    return upbounds
 end
 
 
 
 
 
-function plot_seesaw(G,Param,m,k,NbAlea,povms,ratios) 
+function plot_seesaw(G,Param,m,ratios;k=2,NbAlea=50,povms_demandés=[],QSols_demandés=[],state=[]) 
+    n,_,_,_,_,_ = G
     # Pour les valeurs initiales : 
     #       - une est la meilleure pour le ratio v0/(v0+v1) précédent (pour la première valeur de ratio, une valeur initiale est choisie aléatoirement) ; 
+    #       - QSols_demandés est un tableau de taille length(ratios). Pour chaque valeur rat de ratios, fait beaucoup de tests pour QSols_demandés[rat] avec des Version différentes
     #       - NbAlea sont choisies aléatoirement ; 
-    #       - on teste aussi tous les éléments de given_QSol(G,povms) 
+    #       - on teste aussi tous les éléments de given_QSol(G,povms_demandés) 
+
+    # Si state!=[], tous les see-saw seront calculés en partant de l'état fixé state.
+
+    constant_state = (state!=[])
 
     G = change_game(G,ratios[1])
-    QSols = given_QSol(G,povms)
-    lowbounds= []
+    QSols_povms_demandés = given_QSol(G,povms_demandés)
+    if constant_state
+        for QSol in QSols_povms_demandés
+            QSol[n+1]=state 
+        end
+    end
 
-    best_QSol = random_QSol(G,k)
-    best_sw = SW(best_QSol,G)
-    from_where = ("",(rand((false,true)),rand((false,true)),randfloat(0.5,1))) # Dit d'où vient le record qu'on a obtenu (record de l'itération précédente, aléatoire, given_QSol) et la Version correspondante
+    best_QSols = [] # Les tableaux contenant tous les records pour chaque ratio
+    best_Versions = []
+    best_SWs = []
+
+
+    best_QSol = random_QSol(G,k) # Initialisation des variables records
+    if constant_state 
+        best_QSol[n+1]=state 
+    end
+    best_Version = ("",(rand((false,true)),rand((false,true)),randfloat(0,1))) 
+    best_SW = SW(best_QSol,G)
+
+    compteur=1
 
 
     for rat in ratios 
-        # best_sw,best_InitialValues contiennent les records pour l'itération précédente
+        # best_QSol, best_Version, best_SW contiennent les records pour l'itération précédente
 
         print("\n\nNouveau ratio : v0/(v0+v1) = ",rat,"\n\n")
         G = change_game(G,rat)
 
-        # meilleure pour le ratio précédent 
+        # Meilleure pour le ratio précédent 
         print("\nMeilleure pour le ratio précédent\n")
 
         QSol = copy(best_QSol)
-        _,Version = from_where
+        _,Version = best_Version
 
-        sw = seesaw_mixte(QSol,G,Param,Version,m)
+        sw = seesaw_mixte(QSol,G,Param,Version,m,constant_state=constant_state)
         print(sw,"\n")
-        best_QSol = QSol # Mise à jour de best_QSol et best_sw, qui contiennent à présent le record pour l'itération actuelle
-        best_sw = sw
-        from_where = ("PRÉCÉDENTE",Version)
-        
+        best_QSol = QSol # Mise à jour de best_QSol, best_Version, best_SW, qui contiennent à présent le record pour l'itération actuelle
+        best_Version = ("PRÉCÉDENTE",Version)
+        best_SW = sw
 
+        
+        # QSols_demandés 
+        if QSols_demandés != []
+            print("\nValeurs initiales demandées\n")
+            for do_StabC in [false,true]
+                for do_OptRho in [false,true]
+                    for to_OptC in range(0,1,length=div(NbAlea,8))
+                        QSol = copy(QSols_demandés[compteur])
+                        if constant_state
+                            QSol[n+1]=state 
+                        end
+                        Version = (do_StabC,do_OptRho,to_OptC)
+
+                        sw = seesaw_mixte(QSol,G,Param,Version,m,constant_state=constant_state)
+                        print(sw,"\n")
+                        if sw>best_SW
+                            best_QSol = QSol
+                            best_Version = ("QSOL DEMANDÉE",Version)
+                            best_SW = sw
+                            print("Amélioration : nouveau sw est ",best_SW,", obtenu par la version ",Version,"\n")
+                        end
+                    end
+                end
+            end
+        end
 
         # aléatoires 
         print("\nMesures aléatoires\n")
         for _ in 1:NbAlea
             QSol=random_QSol(G,k)
-            Version = (rand((false,true)),rand((false,true)),randfloat(0.5,1))
+            if constant_state
+                QSol[n+1]=state 
+            end
+            Version = (rand((false,true)),rand((false,true)),randfloat(0,1))
 
-            sw = seesaw_mixte(QSol,G,Param,Version,m)
+            sw = seesaw_mixte(QSol,G,Param,Version,m,constant_state=constant_state)
             print(sw,"\n")
-            if sw>best_sw
+            if sw>best_SW
                 best_QSol = QSol
-                best_sw = sw
-                from_where = ("ALÉATOIRE",Version)
-                print("Amélioration : nouveau sw est ",best_sw,", obtenu par la version ",Version,"\n")
+                best_Version = ("ALÉATOIRE",Version)
+                best_SW = sw
+                print("Amélioration : nouveau sw est ",best_SW,", obtenu par la version ",Version,"\n")
             end
         end
 
 
         # given_QSol(G,povms)
-        print("\nMesures prescrites\n")
-        to_do = copy.(QSols)
+        print("\nMesures avec POVMs demandés\n")
+        to_do = copy.(QSols_povms_demandés)
         for QSol in to_do 
-            Version = (rand((false,true)),rand((false,true)),randfloat(0.5,1))
+            Version = (rand((false,true)),rand((false,true)),randfloat(0,1))
 
-            sw = seesaw_mixte(QSol,G,Param,Version,m)
+            sw = seesaw_mixte(QSol,G,Param,Version,m,constant_state=constant_state)
             print(sw,"\n")
-            if sw>best_sw
+            if sw>best_SW
                 best_QSol = QSol
-                best_sw = sw
-                from_where = ("PRESCRITE",Version)
-                print("Amélioration : nouveau sw est ",best_sw,", obtenu par la version ",Version,"\n")
+                best_Version = ("PRESCRITE",Version)
+                best_SW = sw
+                print("Amélioration : nouveau sw est ",best_SW,", obtenu par la version ",Version,"\n")
             end
         end
 
-        init,Version = from_where
-        print("\nConclusion : le meilleur SW a été obtenu pour une valeur initiale dans ",init,", avec la version",Version,", donnant un record de ",best_sw,"\n")
+        init,Version = best_Version
+        print("\nConclusion : le meilleur SW a été obtenu pour une valeur initiale dans ",init,", avec la version ",Version,", donnant un record de ",best_SW,"\n")
 
-        push!(lowbounds,best_sw)
+        push!(best_QSols,best_QSol)
+        push!(best_Versions,best_Version)
+        push!(best_SWs,best_SW)
+
+        compteur+=1
     end
 
-    #plot(ratios,lowbounds,title="Minorant see-saw",xlabel="v0/(v0+v1)")
-    return lowbounds
+    #plot(ratios,best_sws,title="Minorant see-saw",xlabel="v0/(v0+v1)")
+    return best_QSols,best_Versions,best_SWs
 end
 
 

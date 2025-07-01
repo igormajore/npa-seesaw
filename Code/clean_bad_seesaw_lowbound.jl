@@ -97,6 +97,20 @@ povms1 = [povm_canonique,povm_hadamard]
 povms2 = [povm_canonique,povm_canonique_renverse,povm_hadamard,povm_hadamard_renverse]
 Z = [[1,0] [0,-1]]
 
+function print_QSol(QSol)
+    n=length(QSol)-1
+
+    for i in 1:n
+        for ti in 0:1
+            for ai in 0:1
+                print("M",i,"[",ai,"|",ti,"] = ",QSol[i][ai+1,ti+1],"\n")
+            end
+        end
+        print("\n")
+    end
+    display(QSol[n+1])
+end
+
 
 
 
@@ -230,32 +244,33 @@ end
 
 # Fonctions du see-saw 
 
-function une_iteration_SW(QSol,G,Param) # Applique une itération du see-saw, en optimisant SW sans contrainte. La variable QSol est modifiée pour contenir la solution quantique obtenue à l'issue de l'itération.
+function une_iteration_SW(QSol,G,Param;constant_state=false) # Applique une itération du see-saw, en optimisant SW sans contrainte. La variable QSol est modifiée pour contenir la solution quantique obtenue à l'issue de l'itération.
     n,_,_,_,_,_ = G
     (ApproxStab,_),_ = Param 
     k,_ = LinearAlgebra.size(QSol[1][1,1])
 
-    # SDP sur rho 
-    current_SW = SW(QSol,G) 
-    current_rho = QSol[n+1]
+    if !constant_state
+        # SDP sur rho 
+        current_SW = SW(QSol,G) 
+        current_rho = QSol[n+1]
 
-    model = Model(SCS.Optimizer)
-    set_silent(model) 
+        model = Model(SCS.Optimizer)
+        set_silent(model) 
 
-    @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
-    set_start_value.(rho,QSol[n+1])
+        @variable(model,rho[1:(k^n),1:(k^n)],PSD) 
+        set_start_value.(rho,QSol[n+1])
 
-    @constraint(model,LinearAlgebra.tr(rho)==1)
+        @constraint(model,LinearAlgebra.tr(rho)==1)
 
-    QSol_avec_variable = [if j==n+1 rho else QSol[j] end for j in 1:(n+1)]
-    @objective(model,Max,SW(QSol_avec_variable,G))
-    JuMP.optimize!(model)
-    QSol[n+1] = JuMP.value(rho)
+        QSol_avec_variable = [if j==n+1 rho else QSol[j] end for j in 1:(n+1)]
+        @objective(model,Max,SW(QSol_avec_variable,G))
+        JuMP.optimize!(model)
+        QSol[n+1] = JuMP.value(rho)
 
-    if SW(QSol,G) < current_SW + ApproxStab # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait initialement 
-        QSol[n+1] = current_rho 
+        if SW(QSol,G) < current_SW + ApproxStab # si le sw n'est pas assez amélioré, on reste sur la solution qu'on avait initialement 
+            QSol[n+1] = current_rho 
+        end
     end
-
 
     # SDP sur les mesures de chaque joueur, dans l'ordre croissant 
     for i in 1:n
@@ -292,7 +307,7 @@ function une_iteration_SW(QSol,G,Param) # Applique une itération du see-saw, en
     end
 end
 
-function iterations_SW(QSol,G,Param) # Fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence ApproxConv
+function iterations_SW(QSol,G,Param;constant_state=false) # Fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence ApproxConv
     n,_,_,_,_,_ = G
     (_,ApproxConv),NbTentatives = Param
     
@@ -301,19 +316,20 @@ function iterations_SW(QSol,G,Param) # Fait des itérations jusqu'à obtenir un 
 
     while nb_iter <= NbTentatives
         prevQSol = copy(QSol)
-        une_iteration_SW(QSol,G,Param)
+        une_iteration_SW(QSol,G,Param,constant_state=constant_state)
         sum(norm.(prevQSol - QSol)) > ApproxConv || break 
         nb_iter+=1
     end
 end
 
-function une_iteration_equilibre(QSol,G,Param,Version,m) # Applique une itération du see-saw pour obtenir un équilibre, et modifie QSol avec la nouvelle solution obtenue.  
+function une_iteration_equilibre(QSol,G,Param,Version,m;constant_state=false) # Applique une itération du see-saw pour obtenir un équilibre, et modifie QSol avec la nouvelle solution obtenue.  
     n,_,_,_,_,_ = G
     (ApproxStab,_),_ = Param 
     (do_StabC,do_OptRho,to_OptC) = Version
     k,_ = LinearAlgebra.size(QSol[1][1,1])
 
-    if do_OptRho      # SDP sur rho 
+    if do_OptRho && !constant_state      
+        # SDP sur rho 
         current_SW = SW(QSol,G) 
         current_rho = QSol[n+1]
 
@@ -407,7 +423,7 @@ function une_iteration_equilibre(QSol,G,Param,Version,m) # Applique une itérati
     end
 end
 
-function iterations_equilibre(QSol,G,Param,Version,m) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
+function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
     n,_,_,_,_,_ = G
     (_,ApproxConv),NbTentatives = Param
     
@@ -416,7 +432,7 @@ function iterations_equilibre(QSol,G,Param,Version,m) # Fait des itérations jus
 
     while nb_iter <= NbTentatives
         prevQSol = copy(QSol)
-        une_iteration_equilibre(QSol,G,Param,Version,m)
+        une_iteration_equilibre(QSol,G,Param,Version,m,constant_state=constant_state)
         sum(norm.(prevQSol - QSol)) > ApproxConv || break 
         nb_iter+=1
     end
@@ -427,9 +443,9 @@ function iterations_equilibre(QSol,G,Param,Version,m) # Fait des itérations jus
     end
 end
 
-function seesaw_mixte(QSol,G,Param,Version,m)
-    iterations_SW(QSol,G,Param)
-    iterations_equilibre(QSol,G,Param,Version,m)
+function seesaw_mixte(QSol,G,Param,Version,m;constant_state=false)
+    iterations_SW(QSol,G,Param,constant_state=constant_state)
+    iterations_equilibre(QSol,G,Param,Version,m,constant_state=constant_state)
     return SW(QSol,G) # =0 si on n'a pas eu de convergence
 end
 
@@ -542,15 +558,26 @@ function controlled_gate(n,i,j,U) # Matrice U contrôlée sur un système de n p
 end
 
 function pseudo_telepathy(n)  # renvoie l'état et les mesures de la stratégie pseudo-télépathique pour le graphe cyclique à n joueurs 
-    proj_plus = povm_hadamard[1] # |+><+|
+    plus = [1/sqrt(2), 1/sqrt(2)] # |+>
 
     CZ(i,j) = controlled_gate(n,i,j,Z)
 
-    rho = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([proj_plus for i in 1:n]) * CZ(n,1)*prod(CZ(i,i+1) for i in (n-1):(-1):1)
+    psi = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([plus for _ in 1:n])
+    rho = psi * adjoint(psi)
 
     measures = [povm_canonique povm_hadamard]
 
     return [if i==n+1 rho else copy(measures) end for i in 1:(n+1)]
+end
+
+function tilted_state(n,u,theta) # renvoie l'état pseudo-télépathique où le joueur u a été tilté d'un angle theta
+    plus = [1/sqrt(2), 1/sqrt(2)] # |+>
+    tilted = [cos(theta/2), sin(theta/2)] # joueur tilté 
+
+    CZ(i,j) = controlled_gate(n,i,j,Z)
+    psi = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([if i==u tilted else plus end for i in 1:n])
+
+    return psi*adjoint(psi)
 end
 
 
@@ -572,6 +599,7 @@ end
 
 # Fonctions de test
 
+#= Vieille fonction de test, plot_seesaw me semble mieux
 function many_tests(G,Param,m,k,NbAlea,povms) # Fait plusieurs tests en partant de POVMs aléatoires et de POVMs donnés par la liste povms. Renvoie le meilleur SW obtenu. 
     best_sw = 0
     
@@ -598,4 +626,4 @@ function many_tests(G,Param,m,k,NbAlea,povms) # Fait plusieurs tests en partant 
 
     return best_sw
 end
-
+=#
