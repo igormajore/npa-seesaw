@@ -96,6 +96,7 @@ povm_hadamard_renverse = [ (1/2)*[[1,-1] [-1,1]] , (1/2)*[[1,1] [1,1]] ]
 povms1 = [povm_canonique,povm_hadamard]
 povms2 = [povm_canonique,povm_canonique_renverse,povm_hadamard,povm_hadamard_renverse]
 Z = [[1,0] [0,-1]]
+X = [[0,1] [1,0]]
 
 function print_QSol(QSol)
     n=length(QSol)-1
@@ -179,12 +180,7 @@ end
 function seesaw_NashConstraints_for_i_for_ti(i,ti,QSol,G)  # Contraintes d'équilibre de Nash pour le joueur i lorsqu'il reçoit le type ti (m+1<=i<=n)
     n,T,W,v0,v1,Pinit = G
 
-    T_such_that = [] # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer 
-    for t in T 
-        if t[i]==ti 
-            push!(T_such_that,t)
-        end
-    end
+    T_such_that = filter(t -> (t[i]==ti),T) # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer 
 
     A = enum_tuples(n)
 
@@ -570,14 +566,26 @@ function pseudo_telepathy(n)  # renvoie l'état et les mesures de la stratégie 
     return [if i==n+1 rho else copy(measures) end for i in 1:(n+1)]
 end
 
-function tilted_state(n,u,theta) # renvoie l'état pseudo-télépathique où le joueur u a été tilté d'un angle theta
+function tilted_solution(n,u,theta) # renvoie la solution pseudo-télépathique où le joueur u a été tilté d'un angle theta
+    # Construction de rho
     plus = [1/sqrt(2), 1/sqrt(2)] # |+>
     tilted = [cos(theta/2), sin(theta/2)] # joueur tilté 
 
     CZ(i,j) = controlled_gate(n,i,j,Z)
     psi = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([if i==u tilted else plus end for i in 1:n])
 
-    return psi*adjoint(psi)
+    rho = psi*adjoint(psi)
+
+
+
+    # Construction des mesures
+
+    not_tilted_measures = [povm_canonique povm_hadamard]
+
+    tilted_measures = [[(1/2)*(I + (1/sqrt(2))*(X+Z)) , (1/2)*(I - (1/sqrt(2))*(X+Z)) ] [ (1/2)*(I + (1/sqrt(2))*(X-Z)) , (1/2)*(I - (1/sqrt(2))*(X-Z)) ]]
+
+    return [if i==n+1 rho else (if i==u copy(tilted_measures) else copy(not_tilted_measures) end) end for i in 1:(n+1)]
+
 end
 
 

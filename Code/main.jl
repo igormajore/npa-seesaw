@@ -8,9 +8,10 @@ Le fichier main sert aussi à faire les plots
 
 =#
 
-include("game_gen.jl")
-include("npa_upbound_Qcorr.jl")
-include("clean_bad_seesaw_lowbound.jl")
+include("game_generator.jl")
+include("npa.jl")
+include("seesaw.jl")
+include("equilibrium_tests.jl")
 
 
 
@@ -152,6 +153,40 @@ function plot_seesaw(G,Param,m,ratios;k=2,NbAlea=50,povms_demandés=[],QSols_dem
 
     #plot(ratios,best_sws,title="Minorant see-saw",xlabel="v0/(v0+v1)")
     return best_QSols,best_Versions,best_SWs
+end
+
+
+
+
+
+
+function plot_equilibria(ratios,thetas,ApproxStab)
+    G=NC_00_cycle(3,0)
+    best_ms = []
+
+    for rat in ratios 
+        print("\n\nv0/(v0+v1) = ",rat,"\n\n")
+        G = change_game(G,rat)
+
+        for theta in thetas 
+            for u in 1:3 
+                print("\ntheta = ",theta,", u = ",u,"\n")
+                best_m = -1 
+                for m in 0:3 
+                    is_eq = is_Equilibrium(tilted_solution(3,u,theta),G,m,ApproxStab)
+
+                    print("m = ",m," : ",is_eq,"\n")
+                    if is_eq 
+                        best_m=m 
+                    end
+                end
+
+                push!(best_ms,best_m)
+            end
+        end
+    end
+
+    return best_ms
 end
 
 

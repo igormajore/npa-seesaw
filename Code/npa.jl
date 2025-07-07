@@ -89,12 +89,7 @@ end
 function npa_NashConstraints_for_i_for_ti(i,ti,G,P)  # Contraintes d'équilibre de Nash pour le joueur i lorsqu'il reçoit le type ti, en connaissant la corrélation P
     n,T,W,v0,v1,Pinit = G
 
-    T_such_that = [] # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer 
-    for t in T 
-        if t[i]==ti 
-            push!(T_such_that,t)
-        end
-    end
+    T_such_that = filter(t -> (t[i]==ti),T) # Ensemble des types t tels que t[i] = ti, c'est ce sur quoi on va sommer
 
     A = enum_tuples(n)
 
@@ -120,7 +115,9 @@ function npa_NashConstraints(G,P) # Liste de toutes les contraintes d'équilibre
     end
 
     return constraints # concaténation de toutes les contraintes pour chaque joueur i, chaque type ti
-end
+end 
+
+
 
 
 
