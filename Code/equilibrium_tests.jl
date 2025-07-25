@@ -1,3 +1,5 @@
+using LinearAlgebra,JuMP,SCS
+
 #=
 
 Le but de ce code est de vérifier qu'une solution quantique donnée QSol (au sens de seesaw.jl) est un équilibre (classique, quantique, ou mixte), à une approximation ApproxStab près.
@@ -112,7 +114,7 @@ function is_ClassicalEquilibrium_for_i(i,QSol,G,ApproxStab)
         for ri in 0:1
             for mui in [[0,0],[0,1],[1,0],[1,1]] # fonctions mu_i possibles, de A_i -> A_i, identifiées à des tableaux 
                 if Deviated_Gain_for_i(ti,ri,mui) > Current_Gain_for_i(ti) + ApproxStab 
-                    #print("La solution proposée n'est pas un équilibre : le joueur ",i,", qui est classique, peut améliorer son gain lorsqu'il a le type ",ti,", en effectuant la déviation ri = ",ri," et mui = ",mui,", faisant passer son gain de ",Current_Gain_for_i(ti)," à ",Deviated_Gain_for_i(ti,ri,mui),".\n")
+                    print("La solution proposée n'est pas un équilibre : le joueur ",i,", qui est classique, peut améliorer son gain lorsqu'il a le type ",ti,", en effectuant la déviation ri = ",ri," et mui = ",mui,", faisant passer son gain de ",Current_Gain_for_i(ti)," à ",Deviated_Gain_for_i(ti,ri,mui),".\n")
                     return false
                 end
             end
@@ -147,7 +149,7 @@ function is_QuantumEquilibrium_for_i(i,QSol,G,ApproxStab)
     JuMP.optimize!(model)
 
     if objective_value(model) > Gain_for_i(i,QSol,G) + ApproxStab
-        #print("La solution proposée n'est pas un équilibre : le joueur ",i,", qui est quantique, peut améliorer son gain en utilisant les mesures ",JuMP.value.(N)," faisant passer son gain de ",Gain_for_i(i,QSol,G)," à ",objective_value(model),".\n")
+        print("La solution proposée n'est pas un équilibre : le joueur ",i,", qui est quantique, peut améliorer son gain en utilisant les mesures ",[[JuMP.value(N00),JuMP.value(N10)] [JuMP.value(N01),JuMP.value(N11)]]," faisant passer son gain de ",Gain_for_i(i,QSol,G)," à ",objective_value(model),".\n")
         return false
     end
 

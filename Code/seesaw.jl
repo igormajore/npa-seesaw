@@ -588,6 +588,35 @@ function tilted_solution(n,u,theta) # renvoie la solution pseudo-télépathique 
 
 end
 
+function generalized_tilted_solution(n,u,theta,phi;is_direct=false)
+    # Construction de rho
+    plus = [1/sqrt(2), 1/sqrt(2)] # |+>
+    tilted = [cos(theta/2), sin(theta/2)] # joueur tilté 
+
+    CZ(i,j) = controlled_gate(n,i,j,Z)
+    psi = prod(CZ(i,i+1) for i in 1:(n-1))*CZ(n,1) * krons([if i==u tilted else plus end for i in 1:n])
+
+    rho = psi*adjoint(psi)
+
+    # Construction des mesures 
+
+    function Observable(i,ti) 
+        if ti==0 
+            return cos(phi[i])*X + sin(phi[i])*Z
+        else 
+            if is_direct 
+                return (-sin(phi[i])*X + cos(phi[i])*Z)
+            else 
+                return (sin(phi[i])*X - cos(phi[i])*Z)
+            end
+        end
+    end
+
+    Measure(i,ai,ti) = if ai==0 ((1/2)*(I+Observable(i,ti))) else ((1/2)*(I-Observable(i,ti))) end
+
+    return [if i==n+1 rho else [[Measure(i,0,0) , Measure(i,1,0)] [Measure(i,0,1) , Measure(i,1,1)]] end for i in 1:(n+1)]
+end
+
 
 
 

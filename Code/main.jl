@@ -160,33 +160,36 @@ end
 
 
 
-function plot_equilibria(ratios,thetas,ApproxStab)
+function plot_equilibria(ratios,thetas,phis,ApproxStab)
     G=NC_00_cycle(3,0)
-    best_ms = []
+    best_best_m = -1
 
     for rat in ratios 
         print("\n\nv0/(v0+v1) = ",rat,"\n\n")
         G = change_game(G,rat)
 
-        for theta in thetas 
-            for u in 1:3 
-                print("\ntheta = ",theta,", u = ",u,"\n")
-                best_m = -1 
-                for m in 0:3 
-                    is_eq = is_Equilibrium(tilted_solution(3,u,theta),G,m,ApproxStab)
+        for phi in phis
+            for theta in thetas 
+                print("\ntheta = ",theta,", phi = ",phi," : \n")
+                for u in 1:3 
+                    best_m = -1 
+                    for m in 0:3 
+                        is_eq = is_Equilibrium(generalized_tilted_solution(3,u,theta,phi),G,m,ApproxStab)
 
-                    print("m = ",m," : ",is_eq,"\n")
-                    if is_eq 
-                        best_m=m 
+                        #print("m = ",m," : ",is_eq,"\n")
+                        if is_eq 
+                            best_m=m 
+                        end
+
                     end
+                    print("u = ", u," : best_m = ",best_m,"\n")
+                    best_best_m=max(best_best_m,best_m)
                 end
-
-                push!(best_ms,best_m)
             end
         end
     end
 
-    return best_ms
+    return best_best_m
 end
 
 
