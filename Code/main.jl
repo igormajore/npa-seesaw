@@ -30,9 +30,10 @@ function plot_seesaw(G,Param,m,ratios;k=2,NbAlea=50,povms_demandés=[],QSols_dem
     n,_,_,_,_,_ = G
     # Pour les valeurs initiales : 
     #       - une est la meilleure pour le ratio v0/(v0+v1) précédent (pour la première valeur de ratio, une valeur initiale est choisie aléatoirement) ; 
-    #       - QSols_demandés est un tableau de taille length(ratios). Pour chaque valeur rat de ratios, fait beaucoup de tests pour QSols_demandés[rat] avec des Version différentes
+    #       - quelques tests pour la solution pseudo-télépathique ;
+    #       - QSols_demandés est un tableau de taille length(ratios). Pour chaque valeur rat de ratios, fait beaucoup de tests pour QSols_demandés[rat] avec des Version différentes ;
     #       - NbAlea sont choisies aléatoirement ; 
-    #       - on teste aussi tous les éléments de given_QSol(G,povms_demandés) 
+    #       - on teste aussi tous les éléments de given_QSol(G,povms_demandés).
 
     # Si state!=[], tous les see-saw seront calculés en partant de l'état fixé state.
 
@@ -78,6 +79,26 @@ function plot_seesaw(G,Param,m,ratios;k=2,NbAlea=50,povms_demandés=[],QSols_dem
         best_QSol = QSol # Mise à jour de best_QSol, best_Version, best_SW, qui contiennent à présent le record pour l'itération actuelle
         best_Version = ("PRÉCÉDENTE",Version)
         best_SW = sw
+
+
+        print("\nSolution pseudo-télépathique\n")
+        for _ in 1:(NbAlea/5)
+            QSol = pseudo_telepathy(n)
+            if constant_state
+                QSol[n+1]=state 
+            end
+            Version = (rand((false,true)),rand((false,true)),randfloat(0,1))
+            sw = seesaw_mixte(QSol,G,Param,Version,m,constant_state=constant_state)
+            print(sw,"\n")
+            if sw>best_SW
+                best_QSol = QSol
+                best_Version = ("ZX",Version)
+                best_SW = sw
+                print("Amélioration : nouveau sw est ",best_SW,", obtenu par la version ",Version,"\n")
+            end
+        end
+
+
 
         
         # QSols_demandés 
