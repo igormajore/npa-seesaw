@@ -435,7 +435,7 @@ function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false) # Fai
 
     if nb_iter > NbTentatives  # pas de convergence 
         print("Pas de convergence (iterations_equilibre). Erreur pour la dernière itération : ",sum(norm.(prevQSol - QSol)),"\n")
-        QSol[n+1]=0 # pour donner un social welfare de 0, pour pas interférer 
+        QSol[n+1] = zero(QSol[n+1]) # pour donner un social welfare de 0, pour pas interférer 
     end
 end
 
