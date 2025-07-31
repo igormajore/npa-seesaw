@@ -303,7 +303,7 @@ function une_iteration_SW(QSol,G,Param;constant_state=false) # Applique une ité
     end
 end
 
-function iterations_SW(QSol,G,Param;constant_state=false) # Fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence ApproxConv
+function iterations_SW(QSol,G,Param;constant_state=false,ConvCondition_on_QSol=false) # Fait des itérations jusqu'à obtenir un SW localement optimal, avec comme critère de convergence ApproxConv
     n,_,_,_,_,_ = G
     (_,ApproxConv),NbTentatives = Param
     
@@ -313,7 +313,11 @@ function iterations_SW(QSol,G,Param;constant_state=false) # Fait des itérations
     while nb_iter <= NbTentatives
         prevQSol = copy(QSol)
         une_iteration_SW(QSol,G,Param,constant_state=constant_state)
-        sum(norm.(prevQSol - QSol)) > ApproxConv || break 
+        if ConvCondition_on_QSol
+            sum(norm.(prevQSol - QSol)) > ApproxConv || break 
+        else 
+            maximum(abs.([Gain_for_i(i,QSol,G)-Gain_for_i(i,prevQSol,G) for i in 1:n])) > ApproxConv || break
+        end
         nb_iter+=1
     end
 end
@@ -419,7 +423,7 @@ function une_iteration_equilibre(QSol,G,Param,Version,m;constant_state=false) # 
     end
 end
 
-function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
+function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false,ConvCondition_on_QSol=false) # Fait des itérations jusqu'à obtenir un équilibre, avec comme critère de convergence ApproxConv
     n,_,_,_,_,_ = G
     (_,ApproxConv),NbTentatives = Param
     
@@ -429,7 +433,11 @@ function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false) # Fai
     while nb_iter <= NbTentatives
         prevQSol = copy(QSol)
         une_iteration_equilibre(QSol,G,Param,Version,m,constant_state=constant_state)
-        sum(norm.(prevQSol - QSol)) > ApproxConv || break 
+        if ConvCondition_on_QSol
+            sum(norm.(prevQSol - QSol)) > ApproxConv || break 
+        else 
+            maximum(abs.([Gain_for_i(i,QSol,G)-Gain_for_i(i,prevQSol,G) for i in 1:n])) > ApproxConv || break
+        end
         nb_iter+=1
     end
 
@@ -437,11 +445,13 @@ function iterations_equilibre(QSol,G,Param,Version,m;constant_state=false) # Fai
         print("Pas de convergence (iterations_equilibre). Erreur pour la dernière itération : ",sum(norm.(prevQSol - QSol)),"\n")
         QSol[n+1] = zero(QSol[n+1]) # pour donner un social welfare de 0, pour pas interférer 
     end
+
+    # print("Nombre d'itérations avant convergence : ",nb_iter,"\n")
 end
 
-function seesaw_mixte(QSol,G,Param,Version,m;constant_state=false)
-    iterations_SW(QSol,G,Param,constant_state=constant_state)
-    iterations_equilibre(QSol,G,Param,Version,m,constant_state=constant_state)
+function seesaw_mixte(QSol,G,Param,Version,m;constant_state=false,ConvCondition_on_QSol=false)
+    iterations_SW(QSol,G,Param,constant_state=constant_state,ConvCondition_on_QSol=ConvCondition_on_QSol)
+    iterations_equilibre(QSol,G,Param,Version,m,constant_state=constant_state,ConvCondition_on_QSol=ConvCondition_on_QSol)
     return SW(QSol,G) # =0 si on n'a pas eu de convergence
 end
 
